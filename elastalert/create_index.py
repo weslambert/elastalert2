@@ -19,7 +19,16 @@ from elastalert.auth import Auth
 env = Env(ES_USE_SSL=bool)
 
 
-def create_index_mappings(es_client, ea_index, recreate=False, old_ea_index=None):
+def create_index_mappings(es_client, ea_index, recreate=False, old_ea_index=None, index_settings=None):
+    if index_settings is not None:
+        settings = {'settings': {'index': {}}}
+        if index_settings["shards"] is not None:
+            settings["settings"]["index"]["number_of_shards"] = index_settings["shards"]
+        if index_settings["replicas"] is not None:
+            settings["settings"]["index"]["number_of_replicas"] = index_settings["replicas"]
+    else:
+        settings = None
+
     esinfo = es_client.info()['version']
     if esinfo.get('distribution') == "opensearch":
         # OpenSearch is based on Elasticsearch 7.10.2, currently only v1.0.0 exists
@@ -64,7 +73,7 @@ def create_index_mappings(es_client, ea_index, recreate=False, old_ea_index=None
             except NotFoundError:
                 # Why does this ever occur?? It shouldn't. But it does.
                 pass
-        es_index.create(index_name)
+        es_index.create(index_name, body=settings)
 
     # To avoid a race condition. TODO: replace this with a real check
     time.sleep(2)
@@ -184,6 +193,7 @@ def main():
         client_key = data.get('client_key')
         index = args.index if args.index is not None else data.get('writeback_index')
         old_index = args.old_index if args.old_index is not None else None
+        index_settings = data.get('index_settings')
     else:
         username = args.username if args.username else None
         password = args.password if args.password else None
@@ -209,6 +219,7 @@ def main():
         client_cert = None
         client_key = None
         index = args.index if args.index is not None else input('New index name? (Default elastalert_status) ')
+        index_settings = None
         if not index:
             index = 'elastalert_status'
         old_index = (args.old_index if args.old_index is not None
@@ -244,7 +255,7 @@ def main():
         ca_certs=ca_certs,
         client_key=client_key)
 
-    create_index_mappings(es_client=es, ea_index=index, recreate=args.recreate, old_ea_index=old_index)
+    create_index_mappings(es_client=es, ea_index=index, recreate=args.recreate, old_ea_index=old_index, index_settings=index_settings)
 
 
 if __name__ == '__main__':
